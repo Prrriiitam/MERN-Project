@@ -3,14 +3,17 @@ const express=require("express");
 const path=require("path");
 const hbs=require("hbs");
 const bcrypt=require("bcryptjs");
+const cookieParser = require('cookie-parser');
+const auth=require("./middleware/auth");
 
 
 const app=express();
 require("./db/conn");
 
+app.use(cookieParser());
 
 const Register=require("./models/registers");
-const { log } = require("console");
+
 const port= process.env.PORT || 8000;
 
 const static_path=path.join(__dirname, "../public");
@@ -28,6 +31,55 @@ hbs.registerPartials(partial_path);
 app.get("/",(req,res)=>{
     res.render("index");
 })
+
+
+app.get("/secret", auth ,(req,res)=>{
+    console.log(`this is the cookie stored while login ${req.cookies.jwt}`);
+    res.render("secret");
+})
+
+app.get("/logout",  auth , async (req,res)=>{
+    try{
+        console.log(req.user);
+
+        //Here we are filtering all the token if its match then remove them and if that does not match then just store them uniquely in the database
+        //and in this method the user will get logout only from the desktop or phone which he is using he would not get logout from all the devices
+
+
+        req.user.tokens=req.user.tokens.filter((currelem)=>{
+            return currelem !=req.token;
+        })
+
+
+        //here we are removing only that cookie from the browser but not from the database
+
+
+        res.clearCookie("jwt");
+        await req.user.save();
+        console.log(`Log Out successfully`);
+        res.render("login");
+    }
+    catch(e){
+        console.log(`The eror is ${e}`);
+    }
+})
+
+app.get("/logoutall",  auth , async (req,res)=>{
+    try{
+        // It will delete all tokens stored in that tokens array
+        
+        req.user.tokens=[];
+
+        res.clearCookie("jwt");
+        await req.user.save();
+        console.log(`Log Out successfully`);
+        res.render("login");
+    }
+    catch(e){
+        console.log(`The eror is ${e}`);
+    }
+})
+
 app.get("/register",(req,res)=>{
     res.render("register");
 })
@@ -56,7 +108,19 @@ app.post("/register",async (req,res)=>{
 
         })
         const token=await registerEmployee.generateAuthToken();
-        console.log(`token generated while registering is ${token}`);
+        // console.log(`token generated while registering is ${token}`);
+
+
+    //The res.cookie("name", value ,[option]) function is used to set the cookie name to value
+    //The value parameter may be String or object converted to json
+
+
+       
+    res.cookie('jwt', token, { expires: new Date(Date.now() + 600000),
+    httpOnly: true
+ });
+    console.log(token);
+
 
         const registered=await registerEmployee.save();
         res.status(201).render("index");
@@ -79,7 +143,10 @@ app.post("/login", async(req,res)=>{
     console.log(findata.password);
     const compare=bcrypt.compare(lpass,findata.password);
     const token=await findata.generateAuthToken();
-    console.log(`token generated while login is ${token}`);
+         
+    res.cookie('jwt', token, { expires: new Date(Date.now() + 600000),
+        httpOnly: true
+     });
     if(compare){
       
         res.render("index");
